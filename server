@@ -1,0 +1,188 @@
+using System;
+using System.Collections.Generic;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+
+namespace ChatServer
+{
+    class Program
+    {
+        static Dictionary<string, string> Users = new Dictionary<string, string>();
+        static List<ClientHandler> ConnectedClients = new List<ClientHandler>();
+        static List<string> GroupChats = new List<string>();
+
+        static TcpListener server;
+
+        static void Main(string[] args)
+        {
+            Users.Add("admin", "1111");
+            Users.Add("ivan", "qwerty");
+            GroupChats.Add("Загальний");
+
+            server = new TcpListener(IPAddress.Any, 8888);
+            server.Start();
+
+            Console.WriteLine("=== SERVER STARTED ON PORT 8888 ===");
+
+            while (true)
+            {
+                TcpClient client = server.AcceptTcpClient();
+                Console.WriteLine("Client connected: " + client.Client.RemoteEndPoint);
+
+                ClientHandler handler = new ClientHandler(client);
+                Thread thread = new Thread(handler.Process);
+                thread.Start();
+            }
+        }
+
+        class ClientHandler
+        {
+            public TcpClient client;
+            public NetworkStream stream;
+            public string CurrentUser = "";
+
+            public ClientHandler(TcpClient tcpClient)
+            {
+                client = tcpClient;
+            }
+
+            public void Process()
+            {
+                stream = client.GetStream();
+                byte[] buffer = new byte[1024];
+
+                try
+                {
+                    while (true)
+                    {
+                        int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                        if (bytesRead == 0) break;
+
+                        string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                        string[] parts = message.Split('|');
+                        string command = parts[0];
+
+                        if (command == "REG")
+                        {
+                            string login = parts[1];
+                            string pass = parts[2];
+
+                            lock (Users)
+                            {
+                                if (Users.ContainsKey(login))
+                                {
+                                    Send("REG_RESP|FAIL|Taken");
+                                }
+                                else
+                                {
+                                    Users.Add(login, pass);
+                                    Send("REG_RESP|SUCCESS");
+                                }
+                            }
+                        }
+                        else if (command == "AUTH")
+                        {
+                            string login = parts[1];
+                            string pass = parts[2];
+
+                            if (Users.ContainsKey(login) && Users[login] == pass)
+                            {
+                                CurrentUser = login;
+
+                                lock (ConnectedClients)
+                                    ConnectedClients.Add(this);
+
+                                Send("AUTH_RESP|SUCCESS");
+                                BroadcastUsers();
+                            }
+                            else
+                            {
+                                Send("AUTH_RESP|FAIL|Wrong data");
+                            }
+                        }
+                        else if (command == "MSG_PRIVATE")
+                        {
+                            SendPrivate(parts[1], parts[2]);
+                        }
+                        else if (command == "CREATE_GROUP")
+                        {
+                            lock (GroupChats)
+                                if (!GroupChats.Contains(parts[1]))
+                                    GroupChats.Add(parts[1]);
+
+                            BroadcastGroups();
+                        }
+                        else if (command == "MSG_GROUP")
+                        {
+                            BroadcastAll($"[Group {parts[1]}] {CurrentUser}: {parts[2]}");
+                        }
+                    }
+                }
+                catch { }
+                finally
+                {
+                    lock (ConnectedClients)
+                        ConnectedClients.Remove(this);
+
+                    BroadcastUsers();
+                    client.Close();
+                }
+            }
+
+            void Send(string msg)
+            {
+                byte[] data = Encoding.UTF8.GetBytes(msg);
+                stream.Write(data, 0, data.Length);
+            }
+
+            void SendPrivate(string to, string msg)
+            {
+                lock (ConnectedClients)
+                {
+                    foreach (var c in ConnectedClients)
+                    {
+                        if (c.CurrentUser == to)
+                        {
+                            c.Send($"CHAT|{msg}");
+                            Send($"CHAT|{msg}");
+                            return;
+                        }
+                    }
+                }
+
+                Send("CHAT|User offline");
+            }
+
+            void BroadcastAll(string msg)
+            {
+                lock (ConnectedClients)
+                    foreach (var c in ConnectedClients)
+                        c.Send("CHAT|" + msg);
+            }
+
+            void BroadcastUsers()
+            {
+                string msg = "USERS";
+                lock (ConnectedClients)
+                    foreach (var c in ConnectedClients)
+                        msg += "|" + c.CurrentUser;
+
+                foreach (var c in ConnectedClients)
+                    c.Send(msg);
+            }
+
+            void BroadcastGroups()
+            {
+                string msg = "GROUPS";
+                lock (GroupChats)
+                    foreach (var g in GroupChats)
+                        msg += "|" + g;
+
+                foreach (var c in ConnectedClients)
+                    c.Send(msg);
+            }
+        }
+    }
+}
