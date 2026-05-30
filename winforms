@@ -1,0 +1,67 @@
+using System;
+using System.Net.Sockets;
+using System.Text;
+using System.Windows.Forms;
+
+namespace ChatClient
+{
+    public partial class FormLogin : Form
+    {
+        TcpClient client;
+        NetworkStream stream;
+
+        private void FormLogin_Load(object sender, EventArgs e)
+        {
+            client = new TcpClient("127.0.0.1", 8888);
+            stream = client.GetStream();
+        }
+
+        private void btnLogin_Click(object sender, EventArgs e)
+        {
+            string req = $"AUTH|{txtLogin.Text}|{txtPass.Text}";
+            Send(req);
+
+            string resp = Read();
+            string[] p = resp.Split('|');
+
+            if (p[0] == "AUTH_RESP" && p[1] == "SUCCESS")
+            {
+                FormChat chat = new FormChat(client, stream, txtLogin.Text);
+                Hide();
+                chat.ShowDialog();
+                Close();
+            }
+            else
+            {
+                MessageBox.Show(p.Length > 2 ? p[2] : "Помилка");
+            }
+        }
+
+        private void btnReg_Click(object sender, EventArgs e)
+        {
+            string req = $"REG|{txtLogin.Text}|{txtPass.Text}";
+            Send(req);
+
+            string resp = Read();
+            string[] p = resp.Split('|');
+
+            if (p[1] == "SUCCESS")
+                MessageBox.Show("Реєстрація вдалася");
+            else
+                MessageBox.Show(p.Length > 2 ? p[2] : "Помилка в реєстрації");
+        }
+
+        void Send(string msg)
+        {
+            byte[] data = Encoding.UTF8.GetBytes(msg);
+            stream.Write(data, 0, data.Length);
+        }
+
+        string Read()
+        {
+            byte[] buffer = new byte[512];
+            int bytes = stream.Read(buffer, 0, buffer.Length);
+            return Encoding.UTF8.GetString(buffer, 0, bytes);
+        }
+    }
+}
