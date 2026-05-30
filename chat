@@ -1,0 +1,89 @@
+using System;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using System.Windows.Forms;
+
+namespace ChatClient
+{
+    public partial class FormChat : Form
+    {
+        TcpClient client;
+        NetworkStream stream;
+        string login;
+        Thread listener;
+
+        public FormChat(TcpClient c, NetworkStream s, string l)
+        {
+            client = c;
+            stream = s;
+            login = l;
+        }
+
+        private void FormChat_Load(object sender, EventArgs e)
+        {
+            listener = new Thread(Listen);
+            listener.IsBackground = true;
+            listener.Start();
+        }
+
+        void Listen()
+        {
+            byte[] buffer = new byte[1024];
+
+            while (true)
+            {
+                int bytes = stream.Read(buffer, 0, buffer.Length);
+                string msg = Encoding.UTF8.GetString(buffer, 0, bytes);
+
+                string[] p = msg.Split('|');
+
+                if (p[0] == "CHAT")
+                {
+                    Invoke(new Action(() =>
+                        txtChat.AppendText(p[1] + Environment.NewLine)));
+                }
+                else if (p[0] == "USERS")
+                {
+                    Invoke(new Action(() =>
+                    {
+                        lstUsers.Items.Clear();
+                        for (int i = 1; i < p.Length; i++)
+                            if (p[i] != login)
+                                lstUsers.Items.Add(p[i]);
+                    }));
+                }
+                else if (p[0] == "GROUPS")
+                {
+                    Invoke(new Action(() =>
+                    {
+                        lstGroups.Items.Clear();
+                        for (int i = 1; i < p.Length; i++)
+                            lstGroups.Items.Add(p[i]);
+                    }));
+                }
+            }
+        }
+
+        private void btnSend_Click(object sender, EventArgs e)
+        {
+            string msg;
+
+            if (rbPrivate.Checked)
+                msg = $"MSG_PRIVATE|{lstUsers.SelectedItem}|{txtMsg.Text}";
+            else
+                msg = $"MSG_GROUP|{lstGroups.SelectedItem}|{txtMsg.Text}";
+
+            byte[] data = Encoding.UTF8.GetBytes(msg);
+            stream.Write(data, 0, data.Length);
+            txtMsg.Clear();
+        }
+
+        private void btnCreateGroup_Click(object sender, EventArgs e)
+        {
+            string msg = $"CREATE_GROUP|{txtGroup.Text}";
+            byte[] data = Encoding.UTF8.GetBytes(msg);
+            stream.Write(data, 0, data.Length);
+        }
+    }
+}
