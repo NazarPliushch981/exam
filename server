@@ -17,19 +17,19 @@ namespace ChatServer
 
         static void Main(string[] args)
         {
-            Users.Add("admin", "1111");
-            Users.Add("ivan", "qwerty");
+            Users.Add("admin", "1871");
+            Users.Add("sacha", "qwerty");
             GroupChats.Add("Загальний");
 
             server = new TcpListener(IPAddress.Any, 8888);
             server.Start();
 
-            Console.WriteLine("=== SERVER STARTED ON PORT 8888 ===");
+            Console.WriteLine("СЕРВЕР ЗАПУЩЕНО ПОРТ 8888");
 
             while (true)
             {
                 TcpClient client = server.AcceptTcpClient();
-                Console.WriteLine("Client connected: " + client.Client.RemoteEndPoint);
+                Console.WriteLine("Підключився: " + client.Client.RemoteEndPoint);
 
                 ClientHandler handler = new ClientHandler(client);
                 Thread thread = new Thread(handler.Process);
@@ -50,11 +50,11 @@ namespace ChatServer
 
             public void Process()
             {
-                stream = client.GetStream();
-                byte[] buffer = new byte[1024];
-
                 try
                 {
+                    stream = client.GetStream();
+                    byte[] buffer = new byte[1024];
+
                     while (true)
                     {
                         int bytesRead = stream.Read(buffer, 0, buffer.Length);
@@ -73,12 +73,12 @@ namespace ChatServer
                             {
                                 if (Users.ContainsKey(login))
                                 {
-                                    Send("REG_RESP|FAIL|Taken");
+                                    Send("REG_RESP|FAIL|Логін зайнятий");
                                 }
                                 else
                                 {
                                     Users.Add(login, pass);
-                                    Send("REG_RESP|SUCCESS");
+                                    Send("REG_RESP|SUCCESS| Успішно");
                                 }
                             }
                         }
@@ -94,12 +94,12 @@ namespace ChatServer
                                 lock (ConnectedClients)
                                     ConnectedClients.Add(this);
 
-                                Send("AUTH_RESP|SUCCESS");
+                                Send("AUTH_RESP|SUCCESS|Вхід вдався");
                                 BroadcastUsers();
                             }
                             else
                             {
-                                Send("AUTH_RESP|FAIL|Wrong data");
+                                Send("AUTH_RESP|FAIL| Помилка");
                             }
                         }
                         else if (command == "MSG_PRIVATE")
@@ -116,7 +116,7 @@ namespace ChatServer
                         }
                         else if (command == "MSG_GROUP")
                         {
-                            BroadcastAll($"[Group {parts[1]}] {CurrentUser}: {parts[2]}");
+                            BroadcastAll($"[Група {parts[1]}] {CurrentUser}: {parts[2]}");
                         }
                     }
                 }
@@ -128,6 +128,8 @@ namespace ChatServer
 
                     BroadcastUsers();
                     client.Close();
+
+                    Console.WriteLine($"{CurrentUser} відключився");
                 }
             }
 
@@ -145,14 +147,14 @@ namespace ChatServer
                     {
                         if (c.CurrentUser == to)
                         {
-                            c.Send($"CHAT|{msg}");
-                            Send($"CHAT|{msg}");
+                            c.Send($"CHAT|[Приватно] {CurrentUser}: {msg}");
+                            Send($"CHAT|[Приватно] {CurrentUser}: {msg}");
                             return;
                         }
                     }
                 }
 
-                Send("CHAT|User offline");
+                Send("CHAT| Не в мережі");
             }
 
             void BroadcastAll(string msg)
